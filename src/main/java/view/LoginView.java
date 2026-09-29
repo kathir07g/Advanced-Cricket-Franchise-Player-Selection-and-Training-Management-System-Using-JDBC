@@ -11,8 +11,7 @@ public class LoginView {
         System.out.println("3. Franchise Login");
         System.out.println("4. Player Registration");
         System.out.println("5. Franchise Registration");
-        System.out.println("6. Add Default Franchise");
-        System.out.println("7. Exit");
+        System.out.println("6. Exit");
     }
 
     public void showPlayerMenu() {
@@ -37,6 +36,7 @@ public class LoginView {
         System.out.println("6. Update Franchise Details");
         System.out.println("7. Logout");
     }
+
 
     public void loginFailed() {
         System.out.println("Invalid username or password.");

@@ -9,95 +9,137 @@ import java.util.List;
 public class FranchiseRepositoryImpl implements FranchiseRepository {
 
     @Override
-    public void save(Franchise franchise) {
+    public boolean save(Franchise franchise) {
         String sql = """
-            INSERT INTO franchise
-            (username, password, name, location, trainingDate, availableSpots, roleCount)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """;
+                INSERT INTO franchise
+                (username,password,name,location,trainingDate,availableSpots,roleCount)
+                VALUES (?,?,?,?,?,?,?)
+                """;
 
         try (Connection connection = DBConnection.getConnection();
-             PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement ps = connection.prepareStatement(sql,Statement.RETURN_GENERATED_KEYS)) {
 
-            ps.setString(1, franchise.getUsername());
-            ps.setString(2, franchise.getPassword());
-            ps.setString(3, franchise.getName());
-            ps.setString(4, franchise.getLocation());
-            ps.setDate(5, Date.valueOf(franchise.getTrainingDate()));
-            ps.setInt(6, franchise.getAvailableSpots());
-            ps.setString(7, franchise.getRoleCount());
+            ps.setString(1,franchise.getUsername());
+            ps.setString(2,franchise.getPassword());
+            ps.setString(3,franchise.getName());
+            ps.setString(4,franchise.getLocation());
+            ps.setDate(5,Date.valueOf(franchise.getTrainingDate()));
+            ps.setInt(6,franchise.getAvailableSpots());
+            ps.setString(7,franchise.getRoleCount());
 
             ps.executeUpdate();
             try (ResultSet rs = ps.getGeneratedKeys()) {
                 if (rs.next()) {
-                    int franchiseId = rs.getInt(1);
-                    franchise.setFranchiseId(franchiseId);
-                    System.out.println("Franchise saved with ID: " + franchiseId);
+                    franchise.setFranchiseId(rs.getInt(1));
+                    return true;
                 }
             }
-        } catch (SQLException e) {
+        } catch (SQLException | IllegalArgumentException e) {
             System.out.println("Error while saving franchise.");
-            e.printStackTrace();
+        }
+        return false;
+    }
+
+    @Override
+    public boolean saveDefaultFranchise(Franchise franchise) {
+        String sql = """
+            INSERT INTO franchise
+            (username,password,firstLogin,name,location,trainingDate,availableSpots,roleCount)
+            VALUES (?,?,?,?,?,?,?,?)
+            """;
+
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement ps = connection.prepareStatement(sql,Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1,franchise.getUsername());
+            ps.setString(2,franchise.getPassword());
+            ps.setBoolean(3,true);
+            ps.setString(4,franchise.getName());
+            ps.setString(5,franchise.getLocation());
+            ps.setDate(6,Date.valueOf(franchise.getTrainingDate()));
+            ps.setInt(7,franchise.getAvailableSpots());
+            ps.setString(8,franchise.getRoleCount());
+
+            ps.executeUpdate();
+            try (ResultSet rs = ps.getGeneratedKeys()) {
+                if (rs.next()) {
+                    franchise.setFranchiseId(rs.getInt(1));
+                    franchise.setFirstLogin(true);
+                    return true;
+                }
+            }
+        } catch (SQLException | IllegalArgumentException e) {
+            System.out.println("Error while saving default franchise.");
+        }
+        return false;
+    }
+
+    @Override
+    public boolean updatePassword(int franchiseId,String password) {
+        String sql = """
+            UPDATE franchise
+            SET password = ?,firstLogin = FALSE
+            WHERE franchiseId = ?
+            """;
+
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1,password);
+            ps.setInt(2,franchiseId);
+
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            System.out.println("Error while updating franchise password.");
+            return false;
         }
     }
 
     @Override
     public Franchise findById(int franchiseId) {
 
-        String sql = """ 
-                SELECT franchiseId,username,password,name,location,
+        String sql = """
+                SELECT franchiseId,username,password,firstLogin,name,location,
                 trainingDate,availableSpots,roleCount
                 FROM franchise
-                WHERE franchiseId = ? 
+                WHERE franchiseId = ?
                 """;
 
         try (Connection connection = DBConnection.getConnection();
              PreparedStatement ps = connection.prepareStatement(sql)) {
 
             ps.setInt(1,franchiseId);
-
             try (ResultSet rs = ps.executeQuery()) {
-
                 if (rs.next()) {
                     return mapFranchise(rs);
                 }
             }
-
         } catch (SQLException e) {
             System.out.println("Error while finding franchise.");
-            e.printStackTrace();
         }
-
         return null;
     }
 
     @Override
     public Franchise findByUsername(String username) {
 
-        String sql = """ 
-                SELECT franchiseId,username,password,name,location,
+        String sql = """
+                SELECT franchiseId,username,password,firstLogin,name,location,
                 trainingDate,availableSpots,roleCount
                 FROM franchise
-                WHERE username = ? 
+                WHERE username = ?
                 """;
 
         try (Connection connection = DBConnection.getConnection();
              PreparedStatement ps = connection.prepareStatement(sql)) {
 
             ps.setString(1,username);
-
             try (ResultSet rs = ps.executeQuery()) {
-
                 if (rs.next()) {
                     return mapFranchise(rs);
                 }
             }
-
         } catch (SQLException e) {
             System.out.println("Error while finding franchise by username.");
-            e.printStackTrace();
         }
-
         return null;
     }
 
@@ -106,10 +148,10 @@ public class FranchiseRepositoryImpl implements FranchiseRepository {
 
         List<Franchise> franchises = new ArrayList<>();
 
-        String sql = """ 
-                SELECT franchiseId,username,password,name,location,
+        String sql = """
+                SELECT franchiseId,username,password,firstLogin,name,location,
                 trainingDate,availableSpots,roleCount
-                FROM franchise 
+                FROM franchise
                 """;
 
         try (Connection connection = DBConnection.getConnection();
@@ -119,23 +161,42 @@ public class FranchiseRepositoryImpl implements FranchiseRepository {
             while (rs.next()) {
                 franchises.add(mapFranchise(rs));
             }
-
         } catch (SQLException e) {
             System.out.println("Error while finding franchises.");
-            e.printStackTrace();
         }
-
         return franchises;
     }
 
     @Override
-    public void update(Franchise franchise) {
+    public List<Franchise> findActiveFranchises() {
+        List<Franchise> franchises = new ArrayList<>();
+        String sql = """
+            SELECT franchiseId,username,password,firstLogin,name,location,
+            trainingDate,availableSpots,roleCount
+            FROM franchise
+            WHERE trainingDate >= CURDATE()
+            """;
 
-        String sql = """ 
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement ps = connection.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                franchises.add(mapFranchise(rs));
+            }
+        } catch (SQLException e) {
+            System.out.println("Error while finding active franchises.");
+        }
+        return franchises;
+    }
+
+    @Override
+    public boolean update(Franchise franchise) {
+
+        String sql = """
                 UPDATE franchise
                 SET name = ?,location = ?,trainingDate = ?,
                 availableSpots = ?,roleCount = ?
-                WHERE franchiseId = ? 
+                WHERE franchiseId = ?
                 """;
 
         try (Connection connection = DBConnection.getConnection();
@@ -147,17 +208,15 @@ public class FranchiseRepositoryImpl implements FranchiseRepository {
             ps.setInt(4,franchise.getAvailableSpots());
             ps.setString(5,franchise.getRoleCount());
             ps.setInt(6,franchise.getFranchiseId());
-
-            ps.executeUpdate();
-
-        } catch (SQLException e) {
+            return ps.executeUpdate() > 0;
+        } catch (SQLException | IllegalArgumentException e) {
             System.out.println("Error while updating franchise.");
-            e.printStackTrace();
+            return false;
         }
     }
 
     @Override
-    public void deleteAll() {
+    public boolean deleteAll() {
 
         String sql = "DELETE FROM player_franchise";
         String franchiseSql = "DELETE FROM franchise";
@@ -171,20 +230,27 @@ public class FranchiseRepositoryImpl implements FranchiseRepository {
             ps.executeUpdate();
             franchisePs.executeUpdate();
             resetPs.executeUpdate();
+            return true;
         } catch (SQLException e) {
             System.out.println("Error while clearing franchise data.");
-            e.printStackTrace();
+            return false;
         }
     }
 
     @Override
     public Franchise findByName(String name) {
-        String sql = "SELECT franchiseId, username, password, name, location, trainingDate, availableSpots, roleCount FROM franchise WHERE name = ?";
+
+        String sql = """
+                SELECT franchiseId,username,password,firstLogin,name,location,
+                trainingDate,availableSpots,roleCount
+                FROM franchise
+                WHERE name = ?
+                """;
 
         try (Connection connection = DBConnection.getConnection();
              PreparedStatement ps = connection.prepareStatement(sql)) {
 
-            ps.setString(1, name);
+            ps.setString(1,name);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     return mapFranchise(rs);
@@ -192,17 +258,16 @@ public class FranchiseRepositoryImpl implements FranchiseRepository {
             }
         } catch (SQLException e) {
             System.out.println("Error while finding franchise.");
-            e.printStackTrace();
         }
         return null;
     }
 
     private Franchise mapFranchise(ResultSet rs) throws SQLException {
-
         return new Franchise(
                 rs.getInt("franchiseId"),
                 rs.getString("username"),
                 rs.getString("password"),
+                rs.getBoolean("firstLogin"),
                 rs.getString("name"),
                 rs.getString("location"),
                 rs.getDate("trainingDate").toString(),

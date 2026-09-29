@@ -6,7 +6,7 @@ import java.util.List;
 
 public interface PlayerRepository {
 
-    void save(Player player);
+    boolean save(Player player);
 
     Player findById(int playerId);
 
@@ -16,10 +16,11 @@ public interface PlayerRepository {
 
     List<Player> findByFranchiseId(int franchiseId);
 
-    void update(Player player);
+    boolean update(Player player);
 
-    boolean registerToFranchise(int playerId, int franchiseId);
+    boolean registerToFranchise(int playerId,int franchiseId);
 
-    void deleteAll();
+    boolean removeOtherFranchises(int playerId,int selectedFranchiseId);
 
+    boolean deleteAll();
 }

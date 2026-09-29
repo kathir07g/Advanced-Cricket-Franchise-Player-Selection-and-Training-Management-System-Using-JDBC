@@ -6,7 +6,11 @@ import java.util.List;
 
 public interface FranchiseRepository {
 
-    void save(Franchise franchise);
+    boolean save(Franchise franchise);
+
+    boolean saveDefaultFranchise(Franchise franchise);
+
+    boolean updatePassword(int franchiseId,String password);
 
     Franchise findById(int franchiseId);
 
@@ -14,9 +18,11 @@ public interface FranchiseRepository {
 
     List<Franchise> findAll();
 
-    void update(Franchise franchise);
+    List<Franchise> findActiveFranchises();
+
+    boolean update(Franchise franchise);
 
     Franchise findByName(String name);
 
-    void deleteAll();
+    boolean deleteAll();
 }

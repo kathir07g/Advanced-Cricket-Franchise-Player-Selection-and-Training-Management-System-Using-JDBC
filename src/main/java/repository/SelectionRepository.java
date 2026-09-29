@@ -6,19 +6,23 @@ import java.util.List;
 
 public interface SelectionRepository {
 
-    void saveSelectedPlayers(int franchiseId, List<Player> players);
+    boolean saveSelectedPlayers(int franchiseId,List<Player> players);
 
     List<Player> findSelectedPlayers(int franchiseId);
 
-    boolean isSelected(int franchiseId, int playerId);
+    boolean isSelected(int franchiseId,int playerId);
 
     Integer getSelectionFranchiseId(int playerId);
 
-    void lockPlayerToFranchise(int playerId, int franchiseId);
+    Integer getActiveSelectionFranchiseId(int playerId);
 
     boolean isSelectionDone(int franchiseId);
 
-    void markSelectionDone(int franchiseId);
+    boolean completeSelection(int franchiseId,List<Player> players);
 
-    void clear();
+    boolean releaseExpiredSelections();
+
+    boolean clear();
+
+    boolean clearAll();
 }

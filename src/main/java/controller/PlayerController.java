@@ -8,8 +8,8 @@ import service.SelectionService;
 import view.FranchiseView;
 import view.PlayerView;
 
-import javax.swing.plaf.synth.SynthOptionPaneUI;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Scanner;
 
 public class PlayerController {
@@ -21,14 +21,14 @@ public class PlayerController {
     private PlayerView playerView = new PlayerView();
     private FranchiseView franchiseView = new FranchiseView();
 
-    private Scanner scanner = new Scanner(System.in);
+    private Scanner scanner;
 
-    public PlayerController(PlayerService playerService, FranchiseService franchiseService,
-                            SelectionService selectionService) {
-
+    public PlayerController(PlayerService playerService,FranchiseService franchiseService,
+                            SelectionService selectionService,Scanner scanner) {
         this.playerService = playerService;
         this.franchiseService = franchiseService;
         this.selectionService = selectionService;
+        this.scanner = scanner;
     }
 
     public void registerPlayerFlow() {
@@ -41,10 +41,6 @@ public class PlayerController {
         System.out.print("Password: ");
         String password = readLine();
 
-        if (playerService.login(username,password) != null) {
-            System.out.println("Username already exists.");
-            return;
-        }
         System.out.print("Name: ");
         String name = readLine();
 
@@ -76,41 +72,63 @@ public class PlayerController {
         if (role.equalsIgnoreCase("Bowler")
                 || role.equalsIgnoreCase("AllRounder")
                 || role.equalsIgnoreCase("All Rounder")) {
-
             System.out.print("Total Wickets: ");
             wickets = readInt();
         }
-        System.out.println();
 
-        System.out.println("Choose Franchise:");
-        List<Franchise> franchises = franchiseService.getAllFranchises();
+        List<Franchise> franchises = franchiseService.getActiveFranchises();
+        Integer franchiseId = null;
+        Franchise franchise = null;
 
-        for (int i = 0; i < franchises.size(); i++) {
-            System.out.println((i + 1) + ". " + franchises.get(i).getName() +
-                    " | ID: " + franchises.get(i).getFranchiseId());
+        if (franchises.isEmpty()) {
+            System.out.println();
+            System.out.println("No active franchises are currently available.");
+            System.out.println("You can register as a player without selecting a franchise.");
+        }
+        else {
+            System.out.println();
+            System.out.println("Choose Franchise:");
+            System.out.println("0. Register Without Franchise");
+            for (int i = 0; i < franchises.size(); i++) {
+                System.out.println((i + 1) + ". " + franchises.get(i).getName() +
+                        " | ID: " + franchises.get(i).getFranchiseId());
+            }
+
+            int choice = readInt();
+
+            if (choice < 0 || choice > franchises.size()) {
+                System.out.println("Invalid franchise choice.");
+                return;
+            }
+            if (choice > 0) {
+                franchise = franchises.get(choice - 1);
+                franchiseId = franchise.getFranchiseId();
+            }
         }
 
-        int choice = readInt();
-        if (choice < 1 || choice > franchises.size()) {
-            System.out.println("Invalid franchise choice.");
-            return;
-        }
-        Franchise franchise = franchises.get(choice - 1);
-        Player player = playerService.registerPlayer(username, password, name, DOB, role,
-                strength, bestFigure, experience, runs, wickets, franchise.getFranchiseId());
+        try {
+            Player player = playerService.registerPlayer(username,password,name,DOB,role,
+                    strength,bestFigure,experience,runs,wickets,franchiseId);
+            if (player == null) {
+                System.out.println("Username or registration details already exist.");
+                return;
+            }
 
-        if (player == null) {
-            System.out.println("Player registration failed.");
-            return;
+            System.out.println();
+            System.out.println("========================================");
+            System.out.println("Player Registration Successful");
+            System.out.println("Player ID     : " + player.getPlayerId());
+            if (franchise != null) {
+                System.out.println("Franchise     : " + franchise.getName());
+                System.out.println("Franchise ID  : " + franchise.getFranchiseId());
+            }
+            else {
+                System.out.println("Franchise     : Not Registered");
+            }
+            System.out.println("========================================");
+        } catch (IllegalArgumentException e) {
+            System.out.println(e.getMessage());
         }
-        System.out.println();
-        System.out.println("========================================");
-
-        System.out.println("Player Registration Successful");
-        System.out.println("Player ID     : " + player.getPlayerId());
-        System.out.println("Franchise     : " + franchise.getName());
-        System.out.println("Franchise ID  : " + franchise.getFranchiseId());
-        System.out.println("========================================");
     }
 
     public void startPlayerMenu(Player player) {
@@ -118,9 +136,7 @@ public class PlayerController {
         while (true) {
             System.out.println();
             System.out.println("============ PLAYER MENU ============");
-
             System.out.println("Logged in as: " + player.getName());
-
             System.out.println("1. View Profile");
             System.out.println("2. Update Profile");
             System.out.println("3. Register to Another Franchise");
@@ -133,7 +149,6 @@ public class PlayerController {
             int choice = readInt();
 
             switch (choice) {
-
                 case 1:
                     playerView.displayPlayer(player);
                     break;
@@ -165,46 +180,52 @@ public class PlayerController {
         System.out.println();
         System.out.println("===== REGISTER TO ANOTHER FRANCHISE =====");
 
-        List<Franchise> franchises = franchiseService.getAllFranchises();
+        selectionService.releaseExpiredSelections();
+        player = playerService.getPlayer(player.getPlayerId());
 
+        if (selectionService.getSelectedFranchiseId(player.getPlayerId()) != null) {
+            System.out.println("You have already been selected and cannot register to another franchise.");
+            return;
+        }
+
+        List<Franchise> franchises = franchiseService.getActiveFranchises();
         if (franchises.isEmpty()) {
             System.out.println("No franchises available.");
             return;
         }
 
-        int count = 1;
-
+        List<Franchise> availableFranchises = new ArrayList<>();
         for (Franchise franchise : franchises) {
             if (!player.isRegisteredWithFranchise(franchise.getFranchiseId())) {
-                System.out.println(count++ + ". " + franchise.getName() + " | ID: " + franchise.getFranchiseId());
+                availableFranchises.add(franchise);
             }
         }
-        if (count == 1) {
-            System.out.println("You are already registered with all franchises.");
+        if (availableFranchises.isEmpty()) {
+            System.out.println("You are already registered with all available franchises.");
             return;
         }
 
-        System.out.print("Enter Franchise ID: ");
-        int franchiseId = readInt();
-
-        Franchise franchise = franchiseService.getFranchise(franchiseId);
-
-        if (franchise == null) {
-            System.out.println("Franchise not found.");
-            return;
-        }
-        if (player.isRegisteredWithFranchise(franchiseId)) {
-            System.out.println("You are already registered with this franchise.");
-            return;
+        for (int i = 0; i < availableFranchises.size(); i++) {
+            Franchise franchise = availableFranchises.get(i);
+            System.out.println((i + 1) + ". " + franchise.getName() + " | ID: " + franchise.getFranchiseId());
         }
 
-        boolean registered = playerService.registerPlayerToFranchise(player.getPlayerId(), franchiseId);
-        if (registered) {
-            player.addFranchiseId(franchiseId);
-            System.out.println("Successfully registered with " + franchise.getName());
+        System.out.print("Choose Franchise: ");
+        int choice = readInt();
+
+        if (choice < 1 || choice > availableFranchises.size()) {
+            System.out.println("Invalid franchise choice.");
+            return;
+        }
+
+        Franchise franchise = availableFranchises.get(choice - 1);
+        if (playerService.registerPlayerToFranchise(
+                player.getPlayerId(),franchise.getFranchiseId())) {
+
+            System.out.println("Successfully registered to " + franchise.getName() + ".");
         }
         else {
-            System.out.println("Registration failed.");
+            System.out.println("Unable to register to the franchise.");
         }
     }
 
@@ -218,34 +239,60 @@ public class PlayerController {
         System.out.println("4. Back");
 
         int choice = readInt();
-        switch (choice){
-            case 1:
-                System.out.print("Enter new name: ");
-                player.setName(readLine());
-                playerService.updatePlayer(player);
-                System.out.println("Name updated successfully.");
-                break;
-            case 2:
-                System.out.print("Enter new strength: ");
-                player.setStrength(readLine());
-                playerService.updatePlayer(player);
-                System.out.println("Strength updated successfully.");
-                break;
-            case 3:
-                System.out.print("Enter new best figure: ");
-                player.setBestFigure(readLine());
-                playerService.updatePlayer(player);
-                System.out.println("Best Figure updated successfully.");
-                break;
-            case 4:
-                break;
-            default:
-                System.out.println("Invalid Choice");
-                return;
+        String oldValue;
+
+        try {
+            switch (choice) {
+                case 1:
+                    oldValue = player.getName();
+                    System.out.print("Enter new name: ");
+                    player.setName(readLine());
+                    if (playerService.updatePlayer(player)) {
+                        System.out.println("Name updated successfully.");
+                    }
+                    else {
+                        player.setName(oldValue);
+                        System.out.println("Name update failed.");
+                    }
+                    break;
+                case 2:
+                    oldValue = player.getStrength();
+                    System.out.print("Enter new strength: ");
+                    player.setStrength(readLine());
+                    if (playerService.updatePlayer(player)) {
+                        System.out.println("Strength updated successfully.");
+                    }
+                    else {
+                        player.setStrength(oldValue);
+                        System.out.println("Strength update failed.");
+                    }
+                    break;
+                case 3:
+                    oldValue = player.getBestFigure();
+                    System.out.print("Enter new best figure: ");
+                    player.setBestFigure(readLine());
+                    if (playerService.updatePlayer(player)) {
+                        System.out.println("Best Figure updated successfully.");
+                    }
+                    else {
+                        player.setBestFigure(oldValue);
+                        System.out.println("Best Figure update failed.");
+                    }
+                    break;
+                case 4:
+                    break;
+                default:
+                    System.out.println("Invalid Choice");
+            }
+        } catch (IllegalArgumentException e) {
+            System.out.println(e.getMessage());
         }
     }
 
     private void showRegisteredFranchise(Player player) {
+        selectionService.releaseExpiredSelections();
+        player = playerService.getPlayer(player.getPlayerId());
+
         List<Integer> franchiseIds = player.getFranchiseIds();
 
         if (franchiseIds.isEmpty()) {
@@ -255,18 +302,19 @@ public class PlayerController {
 
         System.out.println();
         System.out.println("Registered Franchise: ");
-        int count=1;
-        for(Integer franchiseId: franchiseIds){
+        int count = 1;
+        for (Integer franchiseId : franchiseIds) {
             Franchise franchise = franchiseService.getFranchise(franchiseId);
-            if (franchise == null) {
-                System.out.println("Franchise not found.");
-                return;
+            if (franchise != null) {
+                System.out.println(count++ + " ." + franchise.getName());
             }
-            System.out.println(count++ +" ." + franchise.getName());
         }
     }
 
     private void showSelectionStatus(Player player) {
+        selectionService.releaseExpiredSelections();
+        player = playerService.getPlayer(player.getPlayerId());
+
         List<Integer> franchiseIds = player.getFranchiseIds();
 
         if (franchiseIds.isEmpty()) {
@@ -279,7 +327,6 @@ public class PlayerController {
 
         for (Integer franchiseId : franchiseIds) {
             Franchise franchise = franchiseService.getFranchise(franchiseId);
-
             if (franchise == null) {
                 continue;
             }
@@ -290,43 +337,40 @@ public class PlayerController {
             if (!selectionService.isSelectionDone(franchiseId)) {
                 System.out.println("Selection Status: SELECTION NOT YET DONE");
             }
+            else if (selectionService.isPlayerSelected(franchiseId,player.getPlayerId())) {
+                System.out.println("Selection Status: SELECTED");
+            }
             else {
-                boolean selected = selectionService.isPlayerSelected(franchiseId, player.getPlayerId());
-
-                if (selected) {
-                    System.out.println("Selection Status: SELECTED");
-                }
-                else {
-                    System.out.println("Selection Status: NOT SELECTED");
-                }
+                System.out.println("Selection Status: NOT SELECTED");
             }
         }
 
         Integer selectionFranchiseId = selectionService.getSelectedFranchiseId(player.getPlayerId());
-
         if (selectionFranchiseId != null) {
             Franchise selectionFranchise = franchiseService.getFranchise(selectionFranchiseId);
-
             if (selectionFranchise != null) {
                 System.out.println();
-                System.out.println("First Selection Franchise: " + selectionFranchise.getName());
+                System.out.println("Selected Franchise: " + selectionFranchise.getName());
             }
         }
     }
 
     private void showTrainingDetails(Player player) {
+        selectionService.releaseExpiredSelections();
+        player = playerService.getPlayer(player.getPlayerId());
+
         List<Integer> franchiseIds = player.getFranchiseIds();
 
         if (franchiseIds.isEmpty()) {
             System.out.println("You are not registered with any franchise.");
             return;
         }
+
         System.out.println();
         System.out.println("======= TRAINING DETAILS =======");
 
         for (Integer franchiseId : franchiseIds) {
             Franchise franchise = franchiseService.getFranchise(franchiseId);
-
             if (franchise != null) {
                 franchiseView.displayTrainingDetails(franchise);
             }
@@ -334,7 +378,6 @@ public class PlayerController {
     }
 
     private int readInt() {
-
         while (true) {
             try {
                 return Integer.parseInt(scanner.nextLine().trim());

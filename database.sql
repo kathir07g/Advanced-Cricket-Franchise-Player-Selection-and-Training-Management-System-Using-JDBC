@@ -4,6 +4,8 @@ USE cricket_franchise_db;
 
 CREATE TABLE player(
                        playerId INT PRIMARY KEY AUTO_INCREMENT,
+                       username VARCHAR(100) NOT NULL UNIQUE,
+                       password VARCHAR(255) NOT NULL,
                        name VARCHAR(100) NOT NULL,
                        dob DATE NOT NULL,
                        role VARCHAR(100) NOT NULL,
@@ -16,6 +18,9 @@ CREATE TABLE player(
 
 CREATE TABLE franchise(
                           franchiseId INT PRIMARY KEY AUTO_INCREMENT,
+                          username VARCHAR(100) NOT NULL UNIQUE,
+                          password VARCHAR(255) NOT NULL,
+                          firstLogin BOOLEAN NOT NULL DEFAULT FALSE,
                           name VARCHAR(100) NOT NULL UNIQUE,
                           location VARCHAR(255) NOT NULL,
                           trainingDate DATE NOT NULL,
@@ -54,14 +59,6 @@ CREATE TABLE selection(
 
                           UNIQUE(playerId)
 );
-
-ALTER TABLE player
-    ADD COLUMN username VARCHAR(100) NOT NULL UNIQUE AFTER playerId,
-ADD COLUMN password VARCHAR(255) NOT NULL AFTER username;
-
-ALTER TABLE franchise
-    ADD COLUMN username VARCHAR(100) NOT NULL UNIQUE AFTER franchiseId,
-ADD COLUMN password VARCHAR(255) NOT NULL AFTER username;
 
 CREATE TABLE selection_status(
                                  franchiseId INT PRIMARY KEY,

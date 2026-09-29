@@ -5,14 +5,16 @@ import model.Player;
 import service.FranchiseService;
 import service.PlayerService;
 import service.SelectionService;
+import util.PasswordUtil;
 import view.LoginView;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Scanner;
 
 public class LoginController {
 
-    private static final String ADMIN_PIN = "Your Pin";
+    private static final String ADMIN_PIN = System.getenv("CRICKET_ADMIN_PIN");
     private PlayerService playerService;
     private FranchiseService franchiseService;
     private SelectionService selectionService;
@@ -22,23 +24,23 @@ public class LoginController {
 
     private LoginView loginView = new LoginView();
 
-    private Scanner scanner = new Scanner(System.in);
+    private Scanner scanner;
 
-    public LoginController(PlayerService playerService, FranchiseService franchiseService, SelectionService selectionService,
-                           PlayerController playerController, FranchiseController franchiseController) {
-
+    public LoginController(PlayerService playerService,FranchiseService franchiseService,SelectionService selectionService,
+                           PlayerController playerController,FranchiseController franchiseController,Scanner scanner) {
         this.playerService = playerService;
         this.franchiseService = franchiseService;
         this.selectionService = selectionService;
         this.playerController = playerController;
         this.franchiseController = franchiseController;
+        this.scanner = scanner;
     }
 
     public void start() {
 
         while (true) {
             loginView.showHomeMenu();
-            System.out.println("Choose: ");
+            System.out.print("Choose: ");
             int choice = readInt();
 
             switch (choice) {
@@ -58,9 +60,6 @@ public class LoginController {
                     franchiseController.registerFranchiseFlow();
                     break;
                 case 6:
-                    addDefaultFranchise();
-                    break;
-                case 7:
                     System.out.println("Thank you for using the system.");
                     return;
                 default:
@@ -81,7 +80,6 @@ public class LoginController {
         int choice = readInt();
 
         switch (choice) {
-
             case 1:
                 addCSK();
                 break;
@@ -102,6 +100,12 @@ public class LoginController {
         System.out.println();
         System.out.println("========== ADMIN LOGIN ==========");
 
+        if (ADMIN_PIN == null || ADMIN_PIN.isBlank()) {
+            System.out.println("Admin PIN is not configured.");
+            System.out.println("Please set the CRICKET_ADMIN_PIN environment variable.");
+            return;
+        }
+
         System.out.print("Enter Admin PIN: ");
         String pin = scanner.nextLine().trim();
 
@@ -109,6 +113,7 @@ public class LoginController {
             System.out.println("Invalid Admin PIN.");
             return;
         }
+
         System.out.println("Admin login successful.");
         adminMenu();
     }
@@ -116,14 +121,14 @@ public class LoginController {
     private void adminMenu() {
 
         while (true) {
-
             System.out.println();
             System.out.println("========== ADMIN MENU ==========");
             System.out.println("1. Show Registered Players");
             System.out.println("2. Show Registered Franchises");
             System.out.println("3. Show Selected Players");
-            System.out.println("4. Clear Data");
-            System.out.println("5. Back");
+            System.out.println("4. Add Default Franchise");
+            System.out.println("5. Clear Data");
+            System.out.println("6. Back");
 
             System.out.print("Choose: ");
             int choice = readInt();
@@ -139,9 +144,12 @@ public class LoginController {
                     showSelectedPlayers();
                     break;
                 case 4:
-                    clearData();
+                    addDefaultFranchise();
                     break;
                 case 5:
+                    clearData();
+                    break;
+                case 6:
                     return;
                 default:
                     System.out.println("Invalid choice.");
@@ -150,17 +158,16 @@ public class LoginController {
     }
 
     private void playerLogin() {
+        selectionService.releaseExpiredSelections();
 
         System.out.println();
         System.out.println("========== PLAYER LOGIN ==========");
-
         System.out.print("Username: ");
         String username = scanner.nextLine().trim();
-
         System.out.print("Password: ");
         String password = scanner.nextLine().trim();
 
-        Player player = playerService.login(username, password);
+        Player player = playerService.login(username,password);
         if (player == null) {
             loginView.loginFailed();
             return;
@@ -171,27 +178,65 @@ public class LoginController {
     }
 
     private void franchiseLogin() {
-
         System.out.println();
         System.out.println("======== FRANCHISE LOGIN ========");
-
         System.out.print("Username: ");
         String username = scanner.nextLine().trim();
-
         System.out.print("Password: ");
         String password = scanner.nextLine().trim();
 
-        Franchise franchise = franchiseService.login(username, password);
+        Franchise franchise = franchiseService.login(username,password);
         if (franchise == null) {
             loginView.loginFailed();
+            return;
+        }
+        if (franchise.isFirstLogin()) {
+            changeDefaultFranchisePassword(franchise);
             return;
         }
         System.out.println("Login successful. Welcome " + franchise.getName());
         franchiseController.startFranchiseMenu(franchise);
     }
 
+    private void changeDefaultFranchisePassword(Franchise franchise) {
+        System.out.println();
+        System.out.println("========================================");
+        System.out.println("FIRST LOGIN - PASSWORD CHANGE REQUIRED");
+        System.out.println("========================================");
+        System.out.println("You are using the temporary password.");
+        System.out.println("Please create a new password.");
+        while (true) {
+            System.out.print("Enter new password: ");
+            String newPassword = scanner.nextLine().trim();
+
+            System.out.print("Confirm new password: ");
+            String confirmPassword = scanner.nextLine().trim();
+
+            if (!newPassword.equals(confirmPassword)) {
+                System.out.println("Passwords do not match.");
+                continue;
+            }
+            if (PasswordUtil.matches(newPassword,franchise.getPassword())) {
+                System.out.println("New password must be different from the current password.");
+                continue;
+            }
+            try {
+                if (franchiseService.changePassword(franchise,newPassword)) {
+                    System.out.println("Password changed successfully.");
+                    System.out.println("Please login again using your new password.");
+                    return;
+                }
+                System.out.println("Failed to change password.");
+                return;
+            } catch (IllegalArgumentException e) {
+                System.out.println(e.getMessage());
+            }
+        }
+    }
+
     private void showRegisteredPlayers() {
-        List<Franchise> franchises = franchiseService.getAllFranchises();
+        selectionService.releaseExpiredSelections();
+        List<Franchise> franchises = franchiseService.getActiveFranchises();
 
         if (franchises.isEmpty()) {
             System.out.println("No franchises available.");
@@ -219,8 +264,9 @@ public class LoginController {
     }
 
     private void showRegisteredFranchises() {
-        List<Franchise> franchises = franchiseService.getAllFranchises();
+        selectionService.releaseExpiredSelections();
 
+        List<Franchise> franchises = franchiseService.getActiveFranchises();
         if (franchises.isEmpty()) {
             System.out.println("No franchises registered.");
             return;
@@ -241,12 +287,14 @@ public class LoginController {
     }
 
     private void showSelectedPlayers() {
-        List<Franchise> franchises = franchiseService.getAllFranchises();
+        selectionService.releaseExpiredSelections();
+        List<Franchise> franchises = franchiseService.getActiveFranchises();
 
         if (franchises.isEmpty()) {
             System.out.println("No franchises available.");
             return;
         }
+
         System.out.println();
         System.out.println("======= SELECTED PLAYERS =======");
         for (Franchise franchise : franchises) {
@@ -283,22 +331,25 @@ public class LoginController {
         System.out.print("Choose: ");
         int choice = readInt();
 
+        if (choice == 4) {
+            return;
+        }
+
+        System.out.print("Type YES to confirm: ");
+        if (!scanner.nextLine().trim().equalsIgnoreCase("YES")) {
+            System.out.println("Clear operation cancelled.");
+            return;
+        }
+
         switch (choice) {
             case 1:
-                playerService.clearPlayers();
-                System.out.println("All player data cleared.");
+                System.out.println(playerService.clearPlayers() ? "All player data cleared." : "Failed to clear player data.");
                 break;
             case 2:
-                franchiseService.clearFranchises();
-                System.out.println("All franchise data cleared.");
+                System.out.println(franchiseService.clearFranchises() ? "All franchise data cleared." : "Failed to clear franchise data.");
                 break;
             case 3:
-                selectionService.clearSelections();
-                playerService.clearPlayers();
-                franchiseService.clearFranchises();
-                System.out.println("All data cleared.");
-                break;
-            case 4:
+                System.out.println(selectionService.clearAll() ? "All data cleared." : "Failed to clear all data.");
                 break;
             default:
                 System.out.println("Invalid choice.");
@@ -306,50 +357,48 @@ public class LoginController {
     }
 
     private void addCSK() {
-
         if (franchiseService.getFranchiseByName("CSK") != null) {
-            System.out.println("CSK is already available.");
+            System.out.println("CSK is already registered.");
             return;
         }
-
-        Franchise franchise = franchiseService.registerFranchise("csk", "csk123", "CSK",
-                "Chepauk Stadium, Chennai", "2026-10-01", 10, "5-3-2");
-        if (franchise != null) {
-            System.out.println("CSK added successfully.");
-            System.out.println("Franchise ID: " + franchise.getFranchiseId());
-        }
+        String trainingDate = LocalDate.now().plusDays(7).toString();
+        addDefault("csk","csk123","CSK","Chepauk Stadium, Chennai",trainingDate,10,"5-3-2");
     }
 
     private void addMI() {
         if (franchiseService.getFranchiseByName("MI") != null) {
-            System.out.println("MI is already available.");
+            System.out.println("MI is already registered.");
             return;
         }
-
-        Franchise franchise = franchiseService.registerFranchise("mi", "mi123", "MI",
-                "Wankhede Stadium, Mumbai", "2026-10-05", 12, "6-3-3");
-        if (franchise != null) {
-            System.out.println("MI added successfully.");
-            System.out.println("Franchise ID: " + franchise.getFranchiseId());
-        }
+        String trainingDate = LocalDate.now().plusDays(10).toString();
+        addDefault("mi","mi123","MI","Wankhede Stadium, Mumbai",trainingDate,7,"3-2-2");
     }
 
     private void addSRH() {
         if (franchiseService.getFranchiseByName("SRH") != null) {
-            System.out.println("SRH is already available.");
+            System.out.println("SRH is already registered.");
             return;
         }
+        String trainingDate = LocalDate.now().plusDays(14).toString();
+        addDefault("srh","srh123","SRH","Rajiv Gandhi International Cricket Stadium, Hyderabad",trainingDate,8,"3-2-3");
+    }
 
-        Franchise franchise = franchiseService.registerFranchise("srh", "srh123", "SRH",
-                "Rajiv Gandhi Stadium, Hyderabad", "2026-10-03", 8, "4-2-2");
-        if (franchise != null) {
-            System.out.println("SRH added successfully.");
-            System.out.println("Franchise ID: " + franchise.getFranchiseId());
+    private void addDefault(String username,String password,String name,String location,String date,int spots,String roleCount) {
+        try {
+            Franchise franchise = franchiseService.registerDefaultFranchise(username,password,name,location,date,spots,roleCount);
+            if (franchise != null) {
+                System.out.println(name + " added successfully.");
+                System.out.println("Franchise ID: " + franchise.getFranchiseId());
+            }
+            else {
+                System.out.println(name + " could not be added.");
+            }
+        } catch (IllegalArgumentException e) {
+            System.out.println(e.getMessage());
         }
     }
 
     private int readInt() {
-
         while (true) {
             try {
                 return Integer.parseInt(scanner.nextLine().trim());

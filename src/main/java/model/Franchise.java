@@ -6,6 +6,7 @@ public class Franchise {
 
     private String username;
     private String password;
+    private boolean firstLogin;
 
     private String name;
     private String location;
@@ -18,17 +19,17 @@ public class Franchise {
     private int bowlerCount;
     private int allRounderCount;
 
-    public Franchise(int franchiseId, String username, String password, String name,
-                     String location, String trainingDate, int availableSpots, String roleCount) {
-
+    public Franchise(int franchiseId,String username,String password,boolean firstLogin,
+                     String name,String location,String trainingDate,
+                     int availableSpots,String roleCount) {
         this.franchiseId = franchiseId;
         this.username = username;
         this.password = password;
+        this.firstLogin = firstLogin;
         this.name = name;
         this.location = location;
         this.trainingDate = trainingDate;
         this.availableSpots = availableSpots;
-
         setRoleCount(roleCount);
     }
 
@@ -39,6 +40,14 @@ public class Franchise {
     public String getPassword() { return password; }
 
     public String getName() { return name; }
+
+    public boolean isFirstLogin() {
+        return firstLogin;
+    }
+
+    public void setFirstLogin(boolean firstLogin) {
+        this.firstLogin = firstLogin;
+    }
 
     public String getLocation() { return location; }
 
@@ -60,23 +69,45 @@ public class Franchise {
 
     public void setTrainingDate(String trainingDate) { this.trainingDate = trainingDate; }
 
-    public void setAvailableSpots(int availableSpots) { this.availableSpots = availableSpots; }
+    public void setAvailableSpots(int availableSpots) {
+        if (availableSpots < 1) {
+            throw new IllegalArgumentException("Available spots must be greater than 0.");
+        }
+        this.availableSpots = availableSpots;
+    }
 
     public void setRoleCount(String roleCount) {
 
-        this.roleCount = roleCount;
-        String[] rolesCount = roleCount.split("-");
+        if (roleCount == null || roleCount.isBlank()) {
+            throw new IllegalArgumentException("Role count cannot be empty.");
+        }
 
+        String[] rolesCount = roleCount.split("-");
         if (rolesCount.length != 3) {
             throw new IllegalArgumentException("Role count must be in format: batsman-bowler-allrounder");
         }
-        this.batsmanCount = Integer.parseInt(rolesCount[0]);
-        this.bowlerCount = Integer.parseInt(rolesCount[1]);
-        this.allRounderCount = Integer.parseInt(rolesCount[2]);
+
+        try {
+            int batsman = Integer.parseInt(rolesCount[0].trim());
+            int bowler = Integer.parseInt(rolesCount[1].trim());
+            int allRounder = Integer.parseInt(rolesCount[2].trim());
+
+            if (batsman < 0 || bowler < 0 || allRounder < 0) {
+                throw new IllegalArgumentException("Role counts cannot be negative.");
+            }
+
+            if (batsman + bowler + allRounder != availableSpots) {
+                throw new IllegalArgumentException("Role count total must match available spots.");
+            }
+
+            this.batsmanCount = batsman;
+            this.bowlerCount = bowler;
+            this.allRounderCount = allRounder;
+            this.roleCount = batsman + "-" + bowler + "-" + allRounder;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Role count must contain valid numbers.");
+        }
     }
 
-    public void setFranchiseId(int franchiseId) {
-        this.franchiseId = franchiseId;
-    }
-
+    public void setFranchiseId(int franchiseId) { this.franchiseId = franchiseId; }
 }

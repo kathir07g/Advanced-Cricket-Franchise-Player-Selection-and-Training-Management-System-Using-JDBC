@@ -9,142 +9,142 @@ import java.util.List;
 public class PlayerRepositoryImpl implements PlayerRepository {
 
     @Override
-    public void save(Player player) {
+    public boolean save(Player player) {
 
         String sql = """
                 INSERT INTO player
                 (username,password,name,dob,role,strength,bestFigure,experience,totalRuns,totalWickets)
-                VALUES (?,?,?,?,?,?,?,?,?,?) 
+                VALUES (?,?,?,?,?,?,?,?,?,?)
                 """;
 
-        try (Connection connection = DBConnection.getConnection();
-             PreparedStatement ps = connection.prepareStatement(sql,Statement.RETURN_GENERATED_KEYS)) {
-
-            ps.setString(1,player.getUsername());
-            ps.setString(2,player.getPassword());
-            ps.setString(3,player.getName());
-            ps.setDate(4,Date.valueOf(player.getDOB()));
-            ps.setString(5,player.getRole());
-            ps.setString(6,player.getStrength());
-            ps.setString(7,player.getBestFigure());
-            ps.setInt(8,player.getExperience());
-
-            if (player.getTotalRuns() == null) {
-                ps.setNull(9,Types.INTEGER);
-            }
-            else {
-                ps.setInt(9,player.getTotalRuns());
-            }
-
-            if (player.getTotalWickets() == null) {
-                ps.setNull(10,Types.INTEGER);
-            }
-            else {
-                ps.setInt(10,player.getTotalWickets());
-            }
-
-            ps.executeUpdate();
-
-            try (ResultSet rs = ps.getGeneratedKeys()) {
-                if (rs.next()) {
-                    int playerId = rs.getInt(1);
-                    player.setPlayerId(playerId);
-                    savePlayerFranchises(playerId,player.getFranchiseIds());
-                }
-            }
-
-        } catch (SQLException e) {
-            System.out.println("Error while saving player.");
-            e.printStackTrace();
-        }
-    }
-
-    private void savePlayerFranchises(int playerId,List<Integer> franchiseIds) {
-
-        String sql = """ 
+        String franchiseSql = """
                 INSERT INTO player_franchise
                 (playerId,franchiseId)
-                VALUES (?,?) 
+                VALUES (?,?)
                 """;
 
-        try (Connection connection = DBConnection.getConnection();
-             PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (Connection connection = DBConnection.getConnection()) {
+            connection.setAutoCommit(false);
 
-            for (Integer franchiseId : franchiseIds) {
-                ps.setInt(1,playerId);
-                ps.setInt(2,franchiseId);
-                ps.addBatch();
+            try {
+                try (PreparedStatement ps = connection.prepareStatement(sql,Statement.RETURN_GENERATED_KEYS)) {
+                    ps.setString(1,player.getUsername());
+                    ps.setString(2,player.getPassword());
+                    ps.setString(3,player.getName());
+                    ps.setDate(4,Date.valueOf(player.getDOB()));
+                    ps.setString(5,player.getRole());
+                    ps.setString(6,player.getStrength());
+                    ps.setString(7,player.getBestFigure());
+                    ps.setInt(8,player.getExperience());
+
+                    if (player.getTotalRuns() == null) {
+                        ps.setNull(9,Types.INTEGER);
+                    }
+                    else {
+                        ps.setInt(9,player.getTotalRuns());
+                    }
+
+                    if (player.getTotalWickets() == null) {
+                        ps.setNull(10,Types.INTEGER);
+                    }
+                    else {
+                        ps.setInt(10,player.getTotalWickets());
+                    }
+
+                    ps.executeUpdate();
+
+                    try (ResultSet rs = ps.getGeneratedKeys()) {
+                        if (!rs.next()) {
+                            connection.rollback();
+                            return false;
+                        }
+                        player.setPlayerId(rs.getInt(1));
+                    }
+                }
+
+                try (PreparedStatement ps = connection.prepareStatement(franchiseSql)) {
+                    for (Integer franchiseId : player.getFranchiseIds()) {
+                        ps.setInt(1,player.getPlayerId());
+                        ps.setInt(2,franchiseId);
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
+                }
+
+                connection.commit();
+                return true;
+            } catch (SQLException | IllegalArgumentException e) {
+                connection.rollback();
+                System.out.println("Error while saving player.");
+                return false;
             }
-
-            ps.executeBatch();
-
         } catch (SQLException e) {
-            System.out.println("Error while saving player franchise.");
-            e.printStackTrace();
+            System.out.println("Error while connecting to the database.");
+            return false;
         }
     }
 
     @Override
-    public boolean registerToFranchise(int playerId, int franchiseId) {
+    public boolean registerToFranchise(int playerId,int franchiseId) {
 
         String sql = """
-            INSERT INTO player_franchise (playerId, franchiseId)
-            VALUES (?, ?)
-            """;
+                INSERT INTO player_franchise (playerId,franchiseId)
+                VALUES (?,?)
+                """;
 
         try (Connection connection = DBConnection.getConnection();
              PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setInt(1, playerId);
-            ps.setInt(2, franchiseId);
-
+            ps.setInt(1,playerId);
+            ps.setInt(2,franchiseId);
             ps.executeUpdate();
             return true;
         } catch (SQLException e) {
             System.out.println("Error while registering player to franchise.");
-            e.printStackTrace();
+            return false;
         }
-        return false;
+    }
+
+    @Override
+    public boolean removeOtherFranchises(int playerId,int selectedFranchiseId) {
+        String sql = """
+            DELETE FROM player_franchise
+            WHERE playerId = ? AND franchiseId <> ?
+            """;
+
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement ps = connection.prepareStatement(sql)) {
+
+            ps.setInt(1,playerId);
+            ps.setInt(2,selectedFranchiseId);
+            ps.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            System.out.println("Error while removing other franchise registrations.");
+            return false;
+        }
     }
 
     @Override
     public Player findById(int playerId) {
 
         String sql = """
-            SELECT playerId, username, password, name, dob, role,
-                   strength, bestFigure, experience, totalRuns, totalWickets
-            FROM player
-            WHERE playerId = ?
-            """;
+                SELECT playerId,username,password,name,dob,role,
+                strength,bestFigure,experience,totalRuns,totalWickets
+                FROM player
+                WHERE playerId = ?
+                """;
 
         try (Connection connection = DBConnection.getConnection();
              PreparedStatement ps = connection.prepareStatement(sql)) {
 
-            ps.setInt(1, playerId);
+            ps.setInt(1,playerId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    Player player = mapPlayer(rs);
-
-                    String franchiseSql = """
-                        SELECT franchiseId
-                        FROM player_franchise
-                        WHERE playerId = ?
-                        """;
-
-                    try (PreparedStatement fps = connection.prepareStatement(franchiseSql)) {
-
-                        fps.setInt(1, playerId);
-                        try (ResultSet frs = fps.executeQuery()) {
-                            while (frs.next()) {
-                                player.addFranchiseId(frs.getInt("franchiseId"));
-                            }
-                        }
-                    }
-                    return player;
+                    return mapPlayer(connection,rs,true);
                 }
             }
         } catch (SQLException e) {
             System.out.println("Error while finding player.");
-            e.printStackTrace();
         }
         return null;
     }
@@ -152,30 +152,25 @@ public class PlayerRepositoryImpl implements PlayerRepository {
     @Override
     public Player findByUsername(String username) {
 
-        String sql = """ 
+        String sql = """
                 SELECT playerId,username,password,name,dob,role,
                 strength,bestFigure,experience,totalRuns,totalWickets
                 FROM player
-                WHERE username = ? 
+                WHERE username = ?
                 """;
 
         try (Connection connection = DBConnection.getConnection();
              PreparedStatement ps = connection.prepareStatement(sql)) {
 
             ps.setString(1,username);
-
             try (ResultSet rs = ps.executeQuery()) {
-
                 if (rs.next()) {
-                    return mapPlayer(rs);
+                    return mapPlayer(connection,rs,true);
                 }
             }
-
         } catch (SQLException e) {
             System.out.println("Error while finding player by username.");
-            e.printStackTrace();
         }
-
         return null;
     }
 
@@ -184,10 +179,10 @@ public class PlayerRepositoryImpl implements PlayerRepository {
 
         List<Player> players = new ArrayList<>();
 
-        String sql = """ 
+        String sql = """
                 SELECT playerId,username,password,name,dob,role,
                 strength,bestFigure,experience,totalRuns,totalWickets
-                FROM player 
+                FROM player
                 """;
 
         try (Connection connection = DBConnection.getConnection();
@@ -195,14 +190,11 @@ public class PlayerRepositoryImpl implements PlayerRepository {
              ResultSet rs = ps.executeQuery()) {
 
             while (rs.next()) {
-                players.add(mapPlayer(rs));
+                players.add(mapPlayer(connection,rs,true));
             }
-
         } catch (SQLException e) {
             System.out.println("Error while finding all players.");
-            e.printStackTrace();
         }
-
         return players;
     }
 
@@ -211,42 +203,37 @@ public class PlayerRepositoryImpl implements PlayerRepository {
 
         List<Player> players = new ArrayList<>();
 
-        String sql = """ 
-SELECT p.playerId,p.username,p.password,p.name,p.dob,p.role,
+        String sql = """
+                SELECT p.playerId,p.username,p.password,p.name,p.dob,p.role,
                 p.strength,p.bestFigure,p.experience,p.totalRuns,p.totalWickets
                 FROM player p
                 INNER JOIN player_franchise pf
                 ON p.playerId = pf.playerId
-                WHERE pf.franchiseId = ? 
+                WHERE pf.franchiseId = ?
                 """;
 
         try (Connection connection = DBConnection.getConnection();
              PreparedStatement ps = connection.prepareStatement(sql)) {
 
             ps.setInt(1,franchiseId);
-
             try (ResultSet rs = ps.executeQuery()) {
-
                 while (rs.next()) {
-                    players.add(mapPlayer(rs));
+                    players.add(mapPlayer(connection,rs,false));
                 }
             }
-
         } catch (SQLException e) {
             System.out.println("Error while finding franchise players.");
-            e.printStackTrace();
         }
-
         return players;
     }
 
     @Override
-    public void update(Player player) {
+    public boolean update(Player player) {
 
-        String sql = """ 
+        String sql = """
                 UPDATE player
                 SET name = ?,strength = ?,bestFigure = ?
-                WHERE playerId = ? 
+                WHERE playerId = ?
                 """;
 
         try (Connection connection = DBConnection.getConnection();
@@ -256,17 +243,16 @@ SELECT p.playerId,p.username,p.password,p.name,p.dob,p.role,
             ps.setString(2,player.getStrength());
             ps.setString(3,player.getBestFigure());
             ps.setInt(4,player.getPlayerId());
-
-            ps.executeUpdate();
-
+            return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             System.out.println("Error while updating player.");
-            e.printStackTrace();
+            return false;
         }
     }
 
     @Override
-    public void deleteAll() {
+    public boolean deleteAll() {
+
         String sql = "DELETE FROM player_franchise";
         String playerSql = "DELETE FROM player";
         String resetSql = "ALTER TABLE player AUTO_INCREMENT = 1";
@@ -279,35 +265,31 @@ SELECT p.playerId,p.username,p.password,p.name,p.dob,p.role,
             ps.executeUpdate();
             playerPs.executeUpdate();
             resetPs.executeUpdate();
+            return true;
         } catch (SQLException e) {
             System.out.println("Error while clearing player data.");
-            e.printStackTrace();
+            return false;
         }
     }
 
-    private Player mapPlayer(ResultSet rs) throws SQLException {
-
-        int playerId = rs.getInt("playerId");
+    private Player mapPlayer(Connection connection,ResultSet rs,boolean loadFranchises) throws SQLException {
 
         List<Integer> franchiseIds = new ArrayList<>();
 
-        String sql = """ 
-            SELECT franchiseId FROM player_franchise
-            WHERE playerId = ? 
-            """;
-
-        try (Connection connection = DBConnection.getConnection();
-             PreparedStatement ps = connection.prepareStatement(sql)) {
-
-            ps.setInt(1, playerId);
-            try (ResultSet franchiseRs = ps.executeQuery()) {
-                while (franchiseRs.next()) {
-                    franchiseIds.add(franchiseRs.getInt("franchiseId"));
+        if (loadFranchises) {
+            String sql = "SELECT franchiseId FROM player_franchise WHERE playerId = ?";
+            try (PreparedStatement ps = connection.prepareStatement(sql)) {
+                ps.setInt(1,rs.getInt("playerId"));
+                try (ResultSet franchiseRs = ps.executeQuery()) {
+                    while (franchiseRs.next()) {
+                        franchiseIds.add(franchiseRs.getInt("franchiseId"));
+                    }
                 }
             }
         }
+
         return new Player(
-                playerId,
+                rs.getInt("playerId"),
                 rs.getString("username"),
                 rs.getString("password"),
                 rs.getString("name"),
@@ -316,38 +298,9 @@ SELECT p.playerId,p.username,p.password,p.name,p.dob,p.role,
                 rs.getString("strength"),
                 rs.getString("bestFigure"),
                 rs.getInt("experience"),
-                rs.getObject("totalRuns", Integer.class),
-                rs.getObject("totalWickets", Integer.class),
-                franchiseIds);
-    }
-
-    private List<Integer> findFranchiseIds(int playerId) {
-
-        List<Integer> franchiseIds = new ArrayList<>();
-
-        String sql = """ 
-                SELECT franchiseId
-                FROM player_franchise
-                WHERE playerId = ? 
-                """;
-
-        try (Connection connection = DBConnection.getConnection();
-             PreparedStatement ps = connection.prepareStatement(sql)) {
-
-            ps.setInt(1,playerId);
-
-            try (ResultSet rs = ps.executeQuery()) {
-
-                while (rs.next()) {
-                    franchiseIds.add(rs.getInt("franchiseId"));
-                }
-            }
-
-        } catch (SQLException e) {
-            System.out.println("Error while finding player franchises.");
-            e.printStackTrace();
-        }
-
-        return franchiseIds;
+                rs.getObject("totalRuns",Integer.class),
+                rs.getObject("totalWickets",Integer.class),
+                franchiseIds
+        );
     }
 }
