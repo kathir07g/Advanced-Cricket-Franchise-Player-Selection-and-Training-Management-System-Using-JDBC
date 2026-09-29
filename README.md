@@ -1,8 +1,8 @@
-# Cricket Franchise Player Selection System
+# Cricket Franchise Player Selection and Training Management System
 
 A console-based Java application for managing cricket franchises, player registrations, training eligibility, and franchise-based player selection.
 
-The project follows the MVC architecture with a separate service and repository layer and uses JDBC with MySQL for persistent data storage.
+The project follows an MVC-based layered architecture with separate Controller, Service, Repository, Model, and Utility layers. The application uses JDBC with MySQL for persistent data storage.
 
 ## Features
 
@@ -17,7 +17,7 @@ The project follows the MVC architecture with a separate service and repository 
 - Register with multiple active franchises
 - View registered franchises
 - View selection status
-- Register without a franchise when no suitable franchise is available
+- Register with another franchise after the selected franchise expires
 
 ### Franchise Management
 
@@ -45,22 +45,22 @@ The project follows the MVC architecture with a separate service and repository 
 
 ### Training Date Management
 
-- A franchise can have a training date.
+- A franchise has a training date.
 - New franchises cannot be registered with a past training date.
-- Existing franchises can naturally become expired when their training date passes.
+- Existing franchises can become expired when their training date passes.
 - Expired franchises are not available for new player registrations.
 - Expired franchises cannot execute player selection.
-- Expired selections are released automatically.
+- Expired selections are released.
 - After the selected franchise's training date expires, the player can register with another active franchise.
 
 ### Authentication & Security
 
 - Franchise username/password authentication
 - PBKDF2 password hashing
-- Salted password storage
+- Random salt generation
 - Password verification using the stored hash
 - First-login password change for the default franchise
-- Normal registered franchises are not forced into the first-login password-change flow
+- Normal registered franchises are not forced to change their password on first login
 - Admin authentication through an environment-configured PIN
 
 ### Database
@@ -69,7 +69,7 @@ The project follows the MVC architecture with a separate service and repository 
 - JDBC connectivity
 - Primary and foreign key constraints
 - Composite key for player-franchise registration
-- Unique constraints to prevent duplicate data
+- Unique constraints to prevent duplicate registrations
 - Persistent franchise and player information
 - Database clearing functionality
 
@@ -100,30 +100,51 @@ The project follows a layered MVC-based architecture:
                     +----------------+
 Model
 
-Contains the application's data objects.
+Contains the application's data objects such as:
 
+Player
+Franchise
+Selection-related models
 Controller
 
 Handles user interaction and console menus.
 
 Service
 
-Contains application and business logic.
+Contains application and business logic such as:
 
+Player registration
+Franchise registration
+Authentication
+Player eligibility
+Franchise expiry
+Player selection
+Selection lifecycle management
 Repository
 
 Handles database operations using JDBC.
 
+Repositories are responsible for:
+
+Insert operations
+Update operations
+Delete operations
+Search operations
+Database retrieval
+Player-franchise registration management
+Selection management
 Utility
 
-Contains reusable utilities such as database connectivity and password hashing.
+Contains reusable utilities such as:
 
+Database connection
+Password hashing and verification
 Technologies Used
 Technology	Purpose
 Java	Application development
 JDBC	Database connectivity
 MySQL	Data persistence
-Maven	Dependency and project management
+Maven	Project and dependency management
 IntelliJ IDEA	Development environment
 MVC	Application architecture
 PBKDF2	Password hashing
@@ -133,7 +154,11 @@ The application uses MySQL.
 
 Database:
 
-cricketdb
+cricket_franchise_db
+
+The database is initialized using:
+
+database.sql
 
 The main entities include:
 
@@ -141,7 +166,6 @@ player
 franchise
 player_franchise
 selection
-selection_status
 Player-Franchise Relationship
 
 A player can register with multiple active franchises.
@@ -190,7 +214,7 @@ Player Becomes Available Again
         |
         v
 Player Can Register With Another Active Franchise
-Important Rule
+Important Selection Rules
 
 Once a player is selected by one franchise:
 
@@ -198,10 +222,11 @@ The player is removed from other franchise registrations.
 The player cannot participate in another active franchise's selection.
 The selected player remains associated with the selected franchise until its training date expires.
 
-When that training date expires:
+When the selected franchise's training date expires:
 
 The selection is released.
 The expired franchise registration is removed.
+The player becomes available again.
 The player can register with another active franchise.
 Franchise Training Date Rules
 New Franchise
@@ -225,7 +250,7 @@ Player Eligibility
 
 Players must satisfy the application's eligibility requirements before being considered for selection.
 
-The selection process also considers the player's:
+The selection process considers player information such as:
 
 Role
 Experience
@@ -245,14 +270,14 @@ Batsman      : 2
 Bowler       : 2
 All-Rounder  : 1
 
-The selection process respects these role limits.
+The selection process respects the configured role limits.
 
 Authentication
 Default Franchise
 
-The application supports a default franchise account for demonstration/setup purposes.
+The application supports a default franchise account for demonstration and initial setup purposes.
 
-The default franchise has a first-login flow:
+The default franchise has a first-login password-change flow:
 
 Default Franchise Login
         |
@@ -268,15 +293,17 @@ New Password Hashed
         v
 Normal Login
 
-The first-login flag is stored in the database.
+The first-login status is stored in the database.
 
-Normal Franchise
+Normal Registered Franchise
 
-A newly registered franchise follows the normal login flow and is not forced to change its password on first login.
+A newly registered franchise follows the normal login flow.
+
+Normal registered franchises are not forced to change their password on first login.
 
 Password Security
 
-Passwords are not stored directly as plain text for newly created accounts.
+Passwords are hashed before being stored for newly created accounts.
 
 The application uses:
 
@@ -285,11 +312,13 @@ PBKDF2WithHmacSHA256
 with:
 
 Random salt
-Configurable iteration count
+65,536 iterations
 256-bit derived key
 Base64 encoding for storage
 
-Stored password values contain the information required to verify the password later.
+The stored password contains the information required to verify the password later.
+
+Password verification uses the stored salt and iteration count to generate the password hash again and compare it with the stored value.
 
 Admin Configuration
 
@@ -304,7 +333,7 @@ Set the variable before running the application.
 Do not commit the real admin PIN to GitHub.
 
 Project Structure
-Cricket-Franchise-Player-Selection/
+Cricket-Franchise-Player-Selection-and-Training-Management-System/
 │
 ├── src/
 │   └── main/
@@ -313,13 +342,13 @@ Cricket-Franchise-Player-Selection/
 │           ├── model/
 │           ├── repository/
 │           ├── service/
-│           └── util/
+│           ├── util/
+│           └── view/
 │
+├── database.sql
 ├── pom.xml
 ├── README.md
-├── .gitignore
-└── database/
-    └── schema.sql
+└── .gitignore
 Setup
 1. Clone the Repository
 git clone <repository-url>
@@ -331,9 +360,13 @@ Open the project using IntelliJ IDEA or another Java IDE that supports Maven.
 
 Create the database:
 
-CREATE DATABASE cricketdb;
+CREATE DATABASE cricket_franchise_db;
 
-Run the required table creation SQL from the project's database/schema file.
+Run the SQL commands from:
+
+database.sql
+
+using MySQL Workbench or the MySQL command line.
 
 4. Configure Database Connection
 
@@ -343,19 +376,16 @@ Make sure the MySQL server is running before starting the application.
 
 5. Configure Admin PIN
 
-Set:
+Set the following environment variable:
 
 CRICKET_ADMIN_PIN
-
-in the environment.
-
 6. Build the Project
 
 Using Maven:
 
 mvn clean compile
 
-Or use the Maven Lifecycle window in IntelliJ IDEA.
+Alternatively, use the Maven Lifecycle window in IntelliJ IDEA.
 
 7. Run the Application
 
@@ -396,8 +426,9 @@ New franchises cannot be created with a past training date.
 Role requirements must match the franchise's available player spots.
 The default franchise uses the first-login password-change flow.
 Normal registered franchises are not forced to change their password on first login.
-Passwords are securely hashed before storage.
+Passwords are hashed before being stored.
 Database constraints provide additional protection against duplicate registrations.
+Franchise and player data persist in the database until the database clearing functionality is used.
 Future Enhancements
 
 Possible future improvements include:
