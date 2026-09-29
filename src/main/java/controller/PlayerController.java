@@ -41,7 +41,7 @@ public class PlayerController {
         System.out.print("Password: ");
         String password = readLine();
 
-        if (playerService.login(username, password) != null) {
+        if (playerService.login(username,password) != null) {
             System.out.println("Username already exists.");
             return;
         }

@@ -105,7 +105,7 @@ public class LoginController {
         System.out.print("Enter Admin PIN: ");
         String pin = scanner.nextLine().trim();
 
-        if (!pin.equals("1234")) {
+        if (!pin.equals(ADMIN_PIN)) {
             System.out.println("Invalid Admin PIN.");
             return;
         }
